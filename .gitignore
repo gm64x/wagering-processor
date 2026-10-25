@@ -1,3 +1,6 @@
 node_modules
 *.log
 .env
+
+# snapshots do migrator do MikroORM
+migrations/.snapshot-*.json

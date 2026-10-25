@@ -20,6 +20,7 @@ export default defineConfig({
     tableName: 'mikro_orm_migrations',
     transactional: true,
     allOrNothing: true,
+    snapshot: false, // migrations são escritas à mão; o snapshot só sujaria a pasta
     // migrations listadas explicitamente: funciona igual em Bun, Node e dentro do container
     migrationsList: [
       { name: 'Migration20261025000001_initial', class: Migration20261025000001_initial },
