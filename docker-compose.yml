@@ -1,0 +1,77 @@
+name: wagering
+
+x-app: &app
+  build: .
+  depends_on:
+    postgres: { condition: service_healthy }
+    localstack: { condition: service_healthy }
+  environment:
+    DATABASE_URL: postgres://wagering:wagering@postgres:5432/wagering
+    AWS_REGION: us-east-1
+    AWS_ACCESS_KEY_ID: test
+    AWS_SECRET_ACCESS_KEY: test
+    SQS_ENDPOINT: http://localstack:4566
+    LOG_LEVEL: info
+  restart: unless-stopped
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: wagering
+      POSTGRES_PASSWORD: wagering
+      POSTGRES_DB: wagering
+    ports: ["5432:5432"]
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U wagering"]
+      interval: 2s
+      retries: 30
+
+  localstack:
+    image: localstack/localstack:3.8
+    environment:
+      SERVICES: sqs
+      AWS_DEFAULT_REGION: us-east-1
+    ports: ["4566:4566"]
+    volumes:
+      - ./infra/localstack-init.sh:/etc/localstack/init/ready.d/init.sh:ro
+    healthcheck:
+      test: ["CMD-SHELL", "awslocal sqs get-queue-url --queue-name wager-transactions.fifo"]
+      interval: 3s
+      retries: 40
+
+  migrate:
+    <<: *app
+    command: ["bun", "run", "migrate:up"]
+    restart: "no"
+
+  # 3 instâncias idênticas: HTTP + consumidor SQS + publisher de outbox + worker de pending reference
+  app1:
+    <<: *app
+    depends_on:
+      migrate: { condition: service_completed_successfully }
+    environment: &appenv
+      DATABASE_URL: postgres://wagering:wagering@postgres:5432/wagering
+      AWS_REGION: us-east-1
+      AWS_ACCESS_KEY_ID: test
+      AWS_SECRET_ACCESS_KEY: test
+      SQS_ENDPOINT: http://localstack:4566
+      LOG_LEVEL: info
+      INSTANCE_ID: app1
+    ports: ["3001:3000"]
+  app2:
+    <<: *app
+    depends_on:
+      migrate: { condition: service_completed_successfully }
+    environment:
+      <<: *appenv
+      INSTANCE_ID: app2
+    ports: ["3002:3000"]
+  app3:
+    <<: *app
+    depends_on:
+      migrate: { condition: service_completed_successfully }
+    environment:
+      <<: *appenv
+      INSTANCE_ID: app3
+    ports: ["3003:3000"]
